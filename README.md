@@ -7,9 +7,10 @@
 
 | 檔案 | 說明 |
 |------|------|
-| `parse_index.py` | 階段 A:解析主索引頁 → `index.csv` |
+| `parse_index.py` | 階段 A:解析政大主索引頁 → `index.csv` |
 | `scrape_html.py` | 階段 B:依索引逐場抓概況表 / 得票明細 → 兩張 CSV |
-| `build_dashboard.py` | 階段 B+:把明細打包成互動儀表板 → `dashboard.html` |
+| `cec_extract.py` | 階段 D:從中選會 votedata.zip 萃取立委/議員 → `cec_candidates.csv`、`cec_partylist.csv` |
+| `build_dashboard.py` | 統一 NCCU+CEC 資料,打包成級聯篩選互動儀表板 → `dashboard.html` |
 | `index.csv` | 105 場選舉(1992–2024)的連結索引 |
 | `overview_turnout.csv` | **選舉概況**(地區層級投票率/票數),504 列 |
 | `detail_candidates.csv` | **候選人得票明細**(候選人層級),724 列 |
@@ -19,13 +20,24 @@
 
 ## 互動儀表板
 
-直接雙擊 `dashboard.html`(免安裝、免網路、免伺服器)。可勾選:
+直接雙擊 `dashboard.html`(免安裝、免網路、免伺服器)。採**級聯篩選**避免資料量爆炸:
 
-- **選舉類別 / 年度 / 政黨 / 地區**(多選,可交叉)、**當選與否**、**候選人姓名搜尋**
-- 即時更新:KPI(場次/候選人數/總得票/當選席次)、各政黨總得票數、各政黨當選席次、
-  各政黨得票佔比趨勢(折線)、可排序的候選人明細表
+1. **選舉類別**(單選,驅動其餘)→ 2. **年度**(多選,供趨勢曲線)→ 3. **地區**(多選)→ 4. **政黨**(多選)+ 候選人搜尋 / 當選與否
+- 即時更新:KPI、各政黨總得票數、各政黨當選席次、各政黨得票佔比趨勢(折線)、可排序明細表
+- 涵蓋類別:總統、直轄市長、縣市長、省長、立法委員(區域/原住民/不分區政黨)、地方議員(區域/原住民)
 
 資料異動後重建:`python3 build_dashboard.py`
+
+## 階段 D:中選會官方資料(立委 / 議員)
+
+政大資料庫的立委/議員候選人得票只在掃描 PDF 內,故改用**中選會選舉資料庫開放資料**
+(`https://data.cec.gov.tw/選舉資料庫/votedata.zip`,政府資料開放授權)。
+
+`cec_extract.py` 依官方「選舉資料庫格式」解析關聯式 `el*` 檔(elcand/elctks/elpaty/elbase/elprof),
+輸出 `cec_candidates.csv`(14,669 筆候選人逐筆)與 `cec_partylist.csv`(不分區政黨得票)。
+原始 110MB zip 不入版控(見 `.gitignore`);重跑前請自行下載至 `cec_data/votedata.zip`。
+
+> 已知小缺口:1994–2006 早期直轄市原住民議員約 42 筆無對應得票(占 0.3%,區碼結構差異)。
 
 ## 重跑
 
