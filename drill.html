@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>地理鑽取 · 全國▸縣市▸區▸里 得票</title>
+<script src="vendor/chart.umd.min.js"></script>
+<style>
+  :root{--bg:#f4f6f8;--panel:#fff;--ink:#1f2933;--muted:#647387;--line:#e3e8ee;--accent:#2b6cb0;--shadow:0 1px 3px rgba(0,0,0,.08)}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"PingFang TC","Microsoft JhengHei","Noto Sans TC",system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+  header{background:#1a2b45;color:#fff;padding:14px 22px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header h1{font-size:17px;margin:0;font-weight:700}
+  header a.back{color:#a9b8d0;font-size:13px;text-decoration:none}
+  select{padding:7px 10px;border-radius:7px;border:1px solid #2b3b55;background:#24344f;color:#fff;font-size:14px}
+  main{max-width:1100px;margin:0 auto;padding:16px 20px 50px}
+  .crumbs{margin:6px 0 16px;font-size:15px}
+  .crumbs a{color:var(--accent);cursor:pointer;text-decoration:none}
+  .crumbs a:hover{text-decoration:underline}
+  .crumbs .sep{color:var(--muted);margin:0 6px}
+  .crumbs b{font-size:16px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;box-shadow:var(--shadow);min-width:0}
+  .card h2{font-size:14px;margin:0 0 10px}
+  .chartwrap{position:relative;height:340px}
+  .list{max-height:420px;overflow:auto}
+  .row{display:flex;align-items:center;gap:10px;padding:8px 8px;border-bottom:1px solid var(--line);cursor:pointer;border-radius:6px}
+  .row:hover{background:#f0f5fb}
+  .row.leaf{cursor:default}.row.leaf:hover{background:none}
+  .row .nm{font-weight:600;min-width:84px}
+  .row .win{font-size:12.5px;color:var(--muted);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .row .pct{font-variant-numeric:tabular-nums;color:var(--ink);font-size:12.5px}
+  .row .arr{color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:50%;flex:0 0 10px}
+  .hint{color:var(--muted);font-size:12.5px}
+  .note{background:#fff6e5;border:1px solid #f0d9a0;color:#7a5b00;padding:10px 14px;border-radius:8px;margin-bottom:14px;font-size:13px;display:none}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .chip{display:inline-block;padding:1px 8px;border-radius:10px;color:#fff;font-size:11px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🗺️ 地理鑽取</h1>
+  <select id="raceSel"></select>
+  <a class="back" href="index.html">← 回政黨分析儀表板</a>
+</header>
+<main>
+  <div class="note" id="fileNote">⚠️ 這個鑽取頁需要從伺服器讀資料。請用線上版開啟
+    (<a href="https://kamiyu94.github.io/taiwan-election-dashboard/drill.html">GitHub Pages 網址</a>);
+    直接雙擊本機檔案會因瀏覽器安全限制無法載入各縣市資料。</div>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="grid">
+    <div class="card"><h2 id="chTitle">各候選人得票</h2><div class="chartwrap"><canvas id="chart"></canvas></div></div>
+    <div class="card"><h2 id="listTitle">下鑽:點選地區</h2><div class="list" id="list"></div></div>
+  </div>
+</main>
+
+<script>
+const PARTY_COLORS={"中國國民黨":"#1f4e9c","民主進步黨":"#1b9431","無黨籍及未經政黨推薦":"#9aa0a6","無黨籍":"#9aa0a6",
+ "親民黨":"#f7841f","新黨":"#f5c400","台灣民眾黨":"#28c8c8","台灣團結聯盟":"#b53f97","時代力量":"#ffb000","建國黨":"#2bbf6a","綠黨":"#7cb342","台灣基進":"#a3251d"};
+function hashColor(s){let h=0;for(let i=0;i<(s||"").length;i++)h=(h*31+s.charCodeAt(i))&0xffffff;return "hsl("+(h%360)+",55%,55%)";}
+const pColor=p=>PARTY_COLORS[p]||hashColor(p);
+const fmt=n=>(n==null?"":n.toLocaleString("en-US"));
+
+let RACE=null, SUMMARY=null, CITY=null, chart=null;
+// path: [] = 全國; [city] = 縣市; [city,dist] = 區; [city,dist,li] = 里
+let path=[];
+
+async function getJSON(u){const r=await fetch(u);if(!r.ok)throw new Error(u);return r.json();}
+
+async function initRaces(){
+  let races;
+  try{ races=await getJSON("data/races.json"); }
+  catch(e){ document.getElementById("fileNote").style.display="block"; return; }
+  const sel=document.getElementById("raceSel");
+  sel.innerHTML=races.map(r=>'<option value="'+r.key+'">'+r.label+'</option>').join("");
+  sel.onchange=()=>loadRace(sel.value);
+  loadRace(races[0].key);
+}
+async function loadRace(key){
+  RACE={key};
+  SUMMARY=await getJSON("data/"+key+"/summary.json");
+  RACE.isPres=key.indexOf("pres")===0;
+  path=[]; CITY=null; render();
+}
+
+// 候選人對照(目前節點)
+function candMap(cands){const m={};(cands||[]).forEach(c=>m[c.no]=c);return m;}
+function winnerOf(votes,cm){
+  let best=null;for(const no in votes){if(best===null||votes[no]>votes[best])best=no;}
+  if(best===null)return null;
+  const tot=Object.values(votes).reduce((a,b)=>a+b,0);
+  return {no:best,cand:cm[best]||{name:"?",party:""},votes:votes[best],pct:tot?votes[best]/tot*100:0};
+}
+
+function drawChart(title,labels,vals,colors){
+  document.getElementById("chTitle").textContent=title;
+  if(chart)chart.destroy();
+  chart=new Chart(document.getElementById("chart"),{type:"bar",
+    data:{labels,datasets:[{data:vals,backgroundColor:colors,borderRadius:4}]},
+    options:{indexAxis:"y",responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>" "+fmt(c.parsed.x)}}},
+      scales:{x:{ticks:{callback:v=>v>=10000?(v/10000)+"萬":v}}}}});
+}
+
+function renderCrumbs(){
+  const c=document.getElementById("crumbs");
+  let html='<a data-d="0">全國</a>';
+  if(path[0])html+='<span class="sep">▸</span>'+(path.length>1?'<a data-d="1">'+path[0].name+'</a>':'<b>'+path[0].name+'</b>');
+  if(path[1])html+='<span class="sep">▸</span>'+(path.length>2?'<a data-d="2">'+path[1].name+'</a>':'<b>'+path[1].name+'</b>');
+  if(path[2])html+='<span class="sep">▸</span><b>'+path[2].name+'</b>';
+  c.innerHTML='<span style="color:var(--muted)">'+SUMMARY.label+':</span> '+html;
+  c.querySelectorAll('a[data-d]').forEach(a=>a.onclick=()=>{path=path.slice(0,+a.dataset.d);render();});
+}
+
+function listRows(items, getVotes, getCands, onClick){
+  const el=document.getElementById("list");
+  if(!items.length){el.innerHTML='<div class="hint">(已到最細層級:村里)</div>';return;}
+  el.innerHTML="";
+  items.forEach(it=>{
+    const cm=candMap(getCands(it)), w=winnerOf(getVotes(it),cm);
+    const div=document.createElement("div");
+    div.className="row"+(onClick?"":" leaf");
+    div.innerHTML='<span class="dot" style="background:'+(w?pColor(w.cand.party):"#ccc")+'"></span>'
+      +'<span class="nm">'+it.name+'</span>'
+      +'<span class="win">'+(w?w.cand.name+' ('+w.cand.party+')':'—')+'</span>'
+      +'<span class="pct">'+(w?w.pct.toFixed(1)+'%':'')+'</span>'
+      +(onClick?'<span class="arr">▸</span>':'');
+    if(onClick)div.onclick=()=>onClick(it);
+    el.appendChild(div);
+  });
+}
+
+async function render(){
+  renderCrumbs();
+  if(path.length===0){            // 全國
+    if(RACE.isPres){
+      const tot={};let cm={};
+      SUMMARY.cities.forEach(c=>{cm=candMap(c.cands);for(const no in c.votes)tot[no]=(tot[no]||0)+c.votes[no];});
+      const arr=Object.keys(tot).map(no=>({no,c:cm[no]||{name:no,party:""},v:tot[no]})).sort((a,b)=>b.v-a.v);
+      drawChart("全國各候選人得票",arr.map(a=>a.c.name),arr.map(a=>a.v),arr.map(a=>pColor(a.c.party)));
+    }else{
+      const seat={};SUMMARY.cities.forEach(c=>{const w=winnerOf(c.votes,candMap(c.cands));if(w){seat[w.cand.party]=(seat[w.cand.party]||0)+1;}});
+      const arr=Object.entries(seat).sort((a,b)=>b[1]-a[1]);
+      drawChart("各政黨拿下縣市數",arr.map(a=>a[0]),arr.map(a=>a[1]),arr.map(a=>pColor(a[0])));
+    }
+    document.getElementById("listTitle").textContent="下鑽:點選縣市("+SUMMARY.cities.length+")";
+    const cities=[...SUMMARY.cities].sort((a,b)=>{
+      const wa=winnerOf(a.votes,candMap(a.cands)),wb=winnerOf(b.votes,candMap(b.cands));
+      return (wb?wb.votes:0)-(wa?wa.votes:0);});
+    listRows(cities,c=>c.votes,c=>c.cands,async c=>{
+      CITY=await getJSON("data/"+RACE.key+"/"+c.code+".json");
+      path=[{code:c.code,name:c.name}];render();});
+    return;
+  }
+  if(path.length===1){            // 縣市 → 顯示候選人總票 + 區清單
+    const cm=candMap(CITY.cands);
+    const cityVotes={};CITY.districts.forEach(d=>{for(const no in d.votes)cityVotes[no]=(cityVotes[no]||0)+d.votes[no];});
+    const arr=Object.keys(cityVotes).map(no=>({c:cm[no]||{name:no,party:""},v:cityVotes[no]})).sort((a,b)=>b.v-a.v);
+    drawChart(path[0].name+" 各候選人得票",arr.map(a=>a.c.name),arr.map(a=>a.v),arr.map(a=>pColor(a.c.party)));
+    document.getElementById("listTitle").textContent="下鑽:點選行政區("+CITY.districts.length+")";
+    const ds=[...CITY.districts].sort((a,b)=>{const wa=winnerOf(a.votes,cm),wb=winnerOf(b.votes,cm);return (wb?wb.votes:0)-(wa?wa.votes:0);});
+    listRows(ds,d=>d.votes,()=>CITY.cands,d=>{path=[path[0],{code:d.code,name:d.name,_d:d}];render();});
+    return;
+  }
+  if(path.length===2){            // 區 → 候選人票 + 里清單
+    const cm=candMap(CITY.cands);
+    const d=path[1]._d;
+    const arr=Object.keys(d.votes).map(no=>({c:cm[no]||{name:no,party:""},v:d.votes[no]})).sort((a,b)=>b.v-a.v);
+    drawChart(path[0].name+" "+path[1].name+" 各候選人得票",arr.map(a=>a.c.name),arr.map(a=>a.v),arr.map(a=>pColor(a.c.party)));
+    document.getElementById("listTitle").textContent="下鑽:點選村里("+d.li.length+")";
+    const ls=[...d.li].sort((a,b)=>{const wa=winnerOf(a.votes,cm),wb=winnerOf(b.votes,cm);return (wb?wb.votes:0)-(wa?wa.votes:0);});
+    listRows(ls,l=>l.votes,()=>CITY.cands,l=>{path=[path[0],path[1],{code:l.code,name:l.name,_l:l}];render();});
+    return;
+  }
+  // 里(葉)→ 候選人票 + 表
+  const cm=candMap(CITY.cands);
+  const l=path[2]._l;
+  const arr=Object.keys(l.votes).map(no=>({c:cm[no]||{name:no,party:""},v:l.votes[no]})).sort((a,b)=>b.v-a.v);
+  drawChart(path[0].name+" "+path[1].name+" "+path[2].name+" 各候選人得票",arr.map(a=>a.c.name),arr.map(a=>a.v),arr.map(a=>pColor(a.c.party)));
+  document.getElementById("listTitle").textContent="村里明細(最細層級)";
+  const tot=arr.reduce((s,a)=>s+a.v,0);
+  document.getElementById("list").innerHTML='<table><thead><tr><th>候選人</th><th>政黨</th><th class="num">得票</th><th class="num">得票率</th></tr></thead><tbody>'
+    +arr.map(a=>'<tr><td>'+a.c.name+'</td><td><span class="chip" style="background:'+pColor(a.c.party)+'">'+a.c.party+'</span></td><td class="num">'+fmt(a.v)+'</td><td class="num">'+(tot?(a.v/tot*100).toFixed(2):0)+'%</td></tr>').join("")
+    +'</tbody></table>';
+}
+
+initRaces();
+</script>
+</body>
+</html>

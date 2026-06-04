@@ -11,6 +11,8 @@
 | `scrape_html.py` | 階段 B:依索引逐場抓概況表 / 得票明細 → 兩張 CSV |
 | `cec_extract.py` | 階段 D:從中選會 votedata.zip 萃取立委/議員 → `cec_candidates.csv`、`cec_partylist.csv` |
 | `build_dashboard.py` | 統一 NCCU+CEC 資料,打包成級聯篩選互動儀表板 → `dashboard.html` |
+| `build_geo.py` | 階段 E:萃取全域型選舉的縣市→區→里樹狀得票 → `data/`(供鑽取頁線上載入) |
+| `drill.html` | 地理鑽取頁:全國▸縣市▸區▸里 逐層下鑽(需線上版,會按需 fetch `data/`) |
 | `index.csv` | 105 場選舉(1992–2024)的連結索引 |
 | `overview_turnout.csv` | **選舉概況**(地區層級投票率/票數),504 列 |
 | `detail_candidates.csv` | **候選人得票明細**(候選人層級),724 列 |
