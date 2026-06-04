@@ -1,0 +1,11 @@
+# 原始 HTML 快取(可由 scrape_html.py 重新產生)
+cache/
+
+# 中選會原始資料(110MB zip + 解壓後數百 MB,不入版控)
+cec_data/
+*.zip
+
+# 系統/編輯器雜項
+.DS_Store
+*.swp
+__pycache__/
