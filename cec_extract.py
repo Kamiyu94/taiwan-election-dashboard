@@ -53,6 +53,15 @@ def read_csv(z, zipname):
 def classify(path):
     """由路徑判斷 (類別, 層級, 年度);非立委/議員回 None"""
     parts = [p for p in path.split("/") if p]
+
+    # 2022(111年)地方公職選舉採代碼命名(T1/T2/T3=議員,其餘市長/代表/里長暫略)
+    if "2022-111" in path:
+        CODE = {"T1": ("議員", "區域"), "T2": ("議員", "山地原住民"), "T3": ("議員", "平地原住民")}
+        for p in parts:
+            if p in CODE:
+                return CODE[p][0], CODE[p][1], "2022"
+        return None
+
     leaf = parts[-1]
     parent = parts[-2] if len(parts) > 1 else ""
 
